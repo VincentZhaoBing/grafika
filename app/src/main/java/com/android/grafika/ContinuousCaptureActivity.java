@@ -16,6 +16,7 @@
 
 package com.android.grafika;
 
+import android.app.Activity;
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
 import android.opengl.GLES20;
@@ -33,7 +34,6 @@ import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.app.Activity;
 
 import com.android.grafika.gles.EglCore;
 import com.android.grafika.gles.FullFrameRect;
@@ -151,7 +151,7 @@ public class ContinuousCaptureActivity extends Activity implements SurfaceHolder
                 }
                 case MSG_BUFFER_STATUS: {
                     long duration = (((long) msg.arg1) << 32) |
-                                    (((long) msg.arg2) & 0xffffffffL);
+                            (((long) msg.arg2) & 0xffffffffL);
                     activity.updateBufferStatus(duration);
                     break;
                 }
@@ -184,7 +184,7 @@ public class ContinuousCaptureActivity extends Activity implements SurfaceHolder
 
         if (!PermissionHelper.hasCameraPermission(this)) {
             PermissionHelper.requestCameraPermission(this, false);
-        } else  {
+        } else {
             if (mCamera == null) {
                 // Ideally, the frames from the camera are at the same resolution as the input to
                 // the video encoder so we don't have to scale.
@@ -274,13 +274,13 @@ public class ContinuousCaptureActivity extends Activity implements SurfaceHolder
 
         AspectFrameLayout layout = (AspectFrameLayout) findViewById(R.id.continuousCapture_afl);
 
-        Display display = ((WindowManager)getSystemService(WINDOW_SERVICE)).getDefaultDisplay();
+        Display display = ((WindowManager) getSystemService(WINDOW_SERVICE)).getDefaultDisplay();
 
-        if(display.getRotation() == Surface.ROTATION_0) {
+        if (display.getRotation() == Surface.ROTATION_0) {
             mCamera.setDisplayOrientation(90);
             layout.setAspectRatio((double) cameraPreviewSize.height / cameraPreviewSize.width);
-        } else if(display.getRotation() == Surface.ROTATION_270) {
-            layout.setAspectRatio((double) cameraPreviewSize.height / cameraPreviewSize.width);
+        } else if (display.getRotation() == Surface.ROTATION_270) {
+            layout.setAspectRatio((double) cameraPreviewSize.width / cameraPreviewSize.height);
             mCamera.setDisplayOrientation(180);
         } else {
             // Set the preview aspect ratio.
@@ -409,8 +409,10 @@ public class ContinuousCaptureActivity extends Activity implements SurfaceHolder
         // TODO: adjust bit rate based on frame rate?
         // TODO: adjust video width/height based on what we're getting from the camera preview?
         //       (can we guarantee that camera preview size is compatible with AVC video encoder?)
+
+        int[] dimensions = getVideoDimensions();
         try {
-            mCircEncoder = new CircularEncoder(VIDEO_WIDTH, VIDEO_HEIGHT, 6000000,
+            mCircEncoder = new CircularEncoder(dimensions[0], dimensions[1], 6000000,
                     mCameraPreviewThousandFps / 1000, 7, mHandler);
         } catch (IOException ioe) {
             throw new RuntimeException(ioe);
@@ -418,6 +420,19 @@ public class ContinuousCaptureActivity extends Activity implements SurfaceHolder
         mEncoderSurface = new WindowSurface(mEglCore, mCircEncoder.getInputSurface(), true);
 
         updateControls();
+    }
+
+    private int[] getVideoDimensions() {
+        Display display = ((WindowManager) getSystemService(WINDOW_SERVICE)).getDefaultDisplay();
+        int[] out = new int[2];
+        if (display.getRotation() == Surface.ROTATION_0 || display.getRotation() == Surface.ROTATION_180) {
+            out[0] = VIDEO_HEIGHT;
+            out[1] = VIDEO_WIDTH;
+        } else {
+            out[0] = VIDEO_WIDTH;
+            out[1] = VIDEO_HEIGHT;
+        }
+        return out;
     }
 
     @Override   // SurfaceHolder.Callback
@@ -485,9 +500,10 @@ public class ContinuousCaptureActivity extends Activity implements SurfaceHolder
         // Send it to the video encoder.
         if (!mFileSaveInProgress) {
             mEncoderSurface.makeCurrent();
-            GLES20.glViewport(0, 0, VIDEO_WIDTH, VIDEO_HEIGHT);
+            int[] dimensions = getVideoDimensions();
+            GLES20.glViewport(0, 0, dimensions[0], dimensions[1]);
             mFullFrameBlit.drawFrame(mTextureId, mTmpMatrix);
-            drawExtra(mFrameNum, VIDEO_WIDTH, VIDEO_HEIGHT);
+            drawExtra(mFrameNum, dimensions[0], dimensions[1]);
             mCircEncoder.frameAvailableSoon();
             mEncoderSurface.setPresentationTime(mCameraTexture.getTimestamp());
             mEncoderSurface.swapBuffers();
@@ -503,9 +519,15 @@ public class ContinuousCaptureActivity extends Activity implements SurfaceHolder
         // We "draw" with the scissor rect and clear calls.  Note this uses window coordinates.
         int val = frameNum % 3;
         switch (val) {
-            case 0:  GLES20.glClearColor(1.0f, 0.0f, 0.0f, 1.0f);   break;
-            case 1:  GLES20.glClearColor(0.0f, 1.0f, 0.0f, 1.0f);   break;
-            case 2:  GLES20.glClearColor(0.0f, 0.0f, 1.0f, 1.0f);   break;
+            case 0:
+                GLES20.glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+                break;
+            case 1:
+                GLES20.glClearColor(0.0f, 1.0f, 0.0f, 1.0f);
+                break;
+            case 2:
+                GLES20.glClearColor(0.0f, 0.0f, 1.0f, 1.0f);
+                break;
         }
 
         int xpos = (int) (width * ((frameNum % 100) / 100.0f));
